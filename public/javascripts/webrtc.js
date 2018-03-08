@@ -42,6 +42,22 @@ $(function() {
         console.error('%o', err);
       });
 
+      peer.on('call', (call) => {
+        if (is_teacher) {
+
+          call.answer(localStream);
+
+          call.on('stream', onStream);
+
+          call.on('close', () => {});
+
+          call.on('error', (err) => {
+            console.dir(err);
+          });
+
+        }
+      });
+
       function step1() {
         const constraints = {
           audio: true,
@@ -56,28 +72,35 @@ $(function() {
           const el = $('#owner').find('video').get(0);
           el.srcObject = localStream;
           el.play();
-          room = peer.joinRoom('mesh_video_example', {
-            mode: 'mesh',
-            stream: localStream
-          });
+          const joinArgs = {
+            mode: 'mesh'
+          };
+          if (is_teacher) {
+            joinArgs.stream = localStream;
+          }
+          room = peer.joinRoom('mesh_video_example', joinArgs);
           step3(room);
         }).catch(err => {
           console.error(err);
         });
       }
 
-      function step3(room) {
-        // **********************************************************************
-        room.on('open', () => {
-          const data = {
-            type: 'tell_me_teacher'
-          };
-          room.send(data);
-        });
-        room.on('stream', stream => {
-          console.log('[stream] peer id:' + stream.peerId);
-          console.log('[stream] own id:' + ownId + ' teacher id:' + teacherId);
-          if (ownId == teacherId) {
+      function onStream(stream) {
+        console.log('[stream] peer id:' + stream.peerId);
+        console.log('[stream] own id:' + ownId + ' teacher id:' + teacherId);
+        if (ownId == teacherId) {
+          const peerId = stream.peerId;
+          const id = 'video_' + peerId + '_' + stream.id.replace('{', '').replace('}', '');
+
+          $('#video-container').append($(
+            '<div class="video_' + peerId + '" id="' + id + '">' +
+            '<video class="remoteVideos" autoplay playsinline width="320px" height="240px">' +
+            '</div>'));
+          const el = $('#' + id).find('video').get(0);
+          el.srcObject = stream;
+          el.play();
+        } else {
+          if (teacherId == stream.peerId) {
             const peerId = stream.peerId;
             const id = 'video_' + peerId + '_' + stream.id.replace('{', '').replace('}', '');
 
@@ -88,40 +111,43 @@ $(function() {
             const el = $('#' + id).find('video').get(0);
             el.srcObject = stream;
             el.play();
-          } else {
-            if (teacherId == stream.peerId) {
-              const peerId = stream.peerId;
-              const id = 'video_' + peerId + '_' + stream.id.replace('{', '').replace('}', '');
+            peer.call(teacherId, localStream);
+          } else if (is_teacher) {
+            const peerId = stream.peerId;
+            const id = 'video_' + peerId + '_' + stream.id.replace('{', '').replace('}', '');
 
-              $('#video-container').append($(
-                '<div class="video_' + peerId + '" id="' + id + '">' +
-                '<video class="remoteVideos" autoplay playsinline width="320px" height="240px">' +
-                '</div>'));
-              const el = $('#' + id).find('video').get(0);
-              el.srcObject = stream;
-              el.play();
-            } else if (is_teacher) {
-              const peerId = stream.peerId;
-              const id = 'video_' + peerId + '_' + stream.id.replace('{', '').replace('}', '');
-
-              $('#video-container').append($(
-                '<div class="video_' + peerId + '" id="' + id + '" style="display:none">' +
-                '<video class="remoteVideos">' +
-                '</div>'));
-              const el = $('#' + id).find('video').get(0);
-              el.srcObject = stream;
-              el.muted = true;
-            }
+            $('#video-container').append($(
+              '<div class="video_' + peerId + '" id="' + id + '" style="display:none">' +
+              '<video class="remoteVideos">' +
+              '</div>'));
+            const el = $('#' + id).find('video').get(0);
+            el.srcObject = stream;
+            el.muted = true;
           }
+        }
+      }
+
+      function step3(room) {
+        // **********************************************************************
+        room.on('open', () => {
+          const data = {
+            type: 'tell_me_teacher'
+          };
+          room.send(data);
         });
+
+        room.on('stream', onStream);
+
         room.on('removeStream', function(stream) {
           console.log('[remove] peer id:' + stream.peerId);
           const peerId = stream.peerId;
           $('#video_' + peerId + '_' + stream.id.replace('{', '').replace('}', '')).remove();
         });
+
         room.on('peerLeave', peerId => {
           $('.video_' + peerId).remove();
         });
+
         room.on('data', (data) => {
           console.log('[data]');
           console.dir(data);
@@ -142,3 +168,4 @@ $(function() {
     }
   });
 });
+
